@@ -9,20 +9,31 @@ import subprocess
 from coinbase_tx import create_coinbase
 import threading
 import pathlib
+import requests
 
 
-def bitcoin_cli(message, command="getblocktemplate", verbose=0, bitcoin_cli=r"C:\Programme\Bitcoin\daemon\bitcoin-cli"):
+def bitcoin_cli(message, command="getblocktemplate", verbose=0, use_rpc=True, bitcoin_cli=r"C:\Programme\Bitcoin\daemon\bitcoin-cli"):
 	if verbose == 1:
 		print("request sent: ")
 		print(json.dumps(message, indent=4))
 
-	if message is not None:
-		if not isinstance(message, str):
-			message = json.dumps(message)
-		process = subprocess.run([bitcoin_cli, command, message], stdout=subprocess.PIPE)
+	if use_rpc:
+		# use rpc running on localhost
+		url = "http://localhost:8332"
+		params = {"method": command, "params": [message]} if message is not None else {"method": command, "params": []}
+		auth = ("rpcuser", "rpcpassword")
+		r = requests.post(url, data=json.dumps(params), auth=auth)
+		blocktemplate = r.json()["result"]
 	else:
-		process = subprocess.run([bitcoin_cli, command], stdout=subprocess.PIPE)
-	blocktemplate = json.loads(process.stdout.decode('utf-8'))
+		# use bitcoin-cli
+		if message is not None:
+			if not isinstance(message, str):
+				message = json.dumps(message)
+			process = subprocess.run([bitcoin_cli, command, message], stdout=subprocess.PIPE)
+		else:
+			process = subprocess.run([bitcoin_cli, command], stdout=subprocess.PIPE)
+		blocktemplate = json.loads(process.stdout.decode('utf-8'))
+
 	if verbose == 1:
 		print("response received: ")
 		print(json.dumps(blocktemplate, indent=4))
@@ -72,8 +83,9 @@ def mine(tmpl):
 			f = open("mined_block.txt", "w")
 			f.write(mined_block)
 			f.close()
-			path_to_blk = str(pathlib.Path().resolve()) + "\\mined_block.txt"
-			bitcoin_cli(message=path_to_blk, command="submitblock", verbose=1)
+			# path_to_blk = str(pathlib.Path().resolve()) + "\\mined_block.txt"
+			# bitcoin_cli(message=path_to_blk, command="submitblock", verbose=1, use_rpc=False)
+			bitcoin_cli(message=mined_block, command="submitblock", verbose=1, use_rpc=True)
 			break
 		if (not (nonce % 0x1000)):
 			sys.stdout.write("0x%8x hashes done...\r" % nonce)
